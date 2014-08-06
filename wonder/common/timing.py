@@ -1,11 +1,8 @@
 import time
 import urllib
-import urllib3
 import logging
-import requests
 from functools import wraps
 from flask import request, json
-from sqlalchemy.engine.base import Connection
 
 
 statsd_client = None
@@ -80,15 +77,41 @@ def init_app(app):
         statsd_client = pystatsd.Client(host=statsd_host, prefix=app.name)
 
     if app.config.get('ENABLE_TIMINGS'):
-        urllib.urlopen = wrap(urllib.urlopen, 'urllib.')
-        urllib3.connectionpool.HTTPConnectionPool.urlopen = wrap(urllib3.connectionpool.HTTPConnectionPool.urlopen, 'urllib3.')
+        app.before_request(before_request)
+        app.after_request(after_request)
+
+        # JSON
         json.loads = wrap(json.loads, 'json.')
         json.dumps = wrap(json.dumps, 'json.')
-        Connection.execute = wrap(Connection.execute, 'db.')
-        requests.api.request = wrap(requests.api.request, 'requests.')
+
+        # urllib
+        urllib.urlopen = wrap(urllib.urlopen, 'urllib.')
+
+        # urllib3
+        try:
+            import urllib3
+        except ImportError:
+            pass
+        else:
+            urllib3.connectionpool.HTTPConnectionPool.urlopen = wrap(urllib3.connectionpool.HTTPConnectionPool.urlopen, 'urllib3.')
+
+        # requests
+        try:
+            import requests
+        except ImportError:
+            pass
+        else:
+            requests.api.request = wrap(requests.api.request, 'requests.')
+
+        # SQLAlchemy
+        try:
+            from sqlalchemy.engine.base import Connection
+        except ImportError:
+            pass
+        else:
+            Connection.execute = wrap(Connection.execute, 'db.')
+
         if app.config.get('USE_GEVENT'):
             requests.Session.request = wrap(requests.Session.request, 'requests.')
             from geventhttpclient.client import HTTPClient
             HTTPClient.request = wrap(HTTPClient.request, 'requests.')
-        app.before_request(before_request)
-        app.after_request(after_request)
