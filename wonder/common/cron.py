@@ -45,9 +45,9 @@ class MuleRunner(object):
                 sys.exit()
 
 
-def _pg_lock(session, lock, f):
+def _pg_lock(db, lock, f):
     query = 'select %s(%d);' % (f, hash(lock))
-    return session.execute(query).fetchone()[0]
+    return db.session.execute(query).fetchone()[0]
 lock_command = lambda session, command: _pg_lock(session, command, 'pg_try_advisory_lock')
 unlock_command = lambda session, command: _pg_lock(session, command, 'pg_advisory_unlock')
 
@@ -55,8 +55,10 @@ unlock_command = lambda session, command: _pg_lock(session, command, 'pg_advisor
 class CronProcessor(MuleRunner):
     sleep_interval = 10
 
-    def __init__(self, manager, job_control, *args, **kwargs):
+    def __init__(self, db, manager, job_control, *args, **kwargs):
         super(CronProcessor, self).__init__(*args, **kwargs)
+        if db:
+            self.db = db
         if manager:
             self.manager = manager
         if job_control:
@@ -73,8 +75,7 @@ class CronProcessor(MuleRunner):
         if not command:
             return
 
-        db_session = self.job_control.query.session
-        acquired = lock_command(db_session, command)
+        acquired = lock_command(self.db, command)
         if not acquired:
             # somebody else is processing this job
             return
@@ -91,7 +92,7 @@ class CronProcessor(MuleRunner):
             self.job_control.query.session.commit()
             success = True
         finally:
-            assert unlock_command(db_session, command)
+            assert unlock_command(self.db, command)
 
         record_timing('cron_processor.%s.run_time' % command, time.time() - start_time)
 
