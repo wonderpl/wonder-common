@@ -74,7 +74,8 @@ def init_app(app):
     statsd_host = app.config.get('STATSD_HOST')
     if statsd_host:
         import pystatsd
-        statsd_client = pystatsd.Client(host=statsd_host, prefix=app.name)
+        prefix = app.config.get('STATSD_PREFIX') or app.name
+        statsd_client = pystatsd.Client(host=statsd_host, prefix=prefix)
 
     if app.config.get('ENABLE_TIMINGS'):
         app.before_request(before_request)
